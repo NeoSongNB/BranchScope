@@ -32,7 +32,7 @@ export type Profile = Record<SelectorName, string> & {
   evidence: string;
 };
 type LiveRequest = {action: 'context' | 'clear' | 'stop'} | {action: 'update'; since: number} |
-  {action: 'sample' | 'watch'; pathname: string; authorized: true; profile?: Profile};
+  {action: 'sample' | 'watch' | 'acceptance'; pathname: string; authorized: true; profile?: Profile};
 type LiveReply = {
   ok: boolean;
   code?: string;
@@ -41,6 +41,7 @@ type LiveReply = {
   snapshot?: LiveSnapshot;
   revision?: number;
   watching?: boolean;
+  acceptance?: { t10: string; t11: string; t13: string };
 };
 const callbacks = globalThis as typeof globalThis & {
   chrome?: {runtime?: {sendMessage(message: unknown): Promise<LiveReply | undefined>}};

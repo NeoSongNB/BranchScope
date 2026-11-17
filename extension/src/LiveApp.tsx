@@ -37,6 +37,7 @@ const errors: Record<string, string> = {
   MAP_CLOSED: '请从 ChatGPT 会话页面右下角打开会话地图。',
   TAB_UNAVAILABLE: '当前标签页无法连接采集器。请刷新网页后重新打开地图。',
   CONTEXT_CHANGED: '会话已切换，请从当前页面重新打开地图。',
+  RELOAD_CHECK_UNAVAILABLE: '现场验收无法启动。请重新打开会话地图后重试。',
 };
 function describe(code = 'SAMPLING_ERROR') {
   return errors[code] ?? `当前采样不可用（${code}）。`;
@@ -62,6 +63,7 @@ export function LiveApp() {
   const [confirmed, setConfirmed] = useState(false);
   const [diagnostic, setDiagnostic] = useState('');
   const [diagnosticError, setDiagnosticError] = useState<string>();
+  const [fieldReport, setFieldReport] = useState('');
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [selectors, setSelectors] = useState<Partial<Record<SelectorName, string>>>({});
   const fixture = useMemo(() => liveFixture(pathname, snapshot), [pathname, snapshot]);
@@ -79,7 +81,9 @@ export function LiveApp() {
       }
       setPathname(result.pathname);
       setStopped(result.stopped === true);
-      setNotice(result.stopped ? describe('STOPPED') : '等待手动采样。仅采集当前已挂载的消息。');
+      if (result.acceptance) setFieldReport(JSON.stringify(result.acceptance, null, 2));
+      setNotice(result.acceptance ? '现场采样与刷新对照已结束。请查看脱敏诊断。' :
+        result.stopped ? describe('STOPPED') : '等待手动采样。仅采集当前已挂载的消息。');
     });
     return () => { cancelled = true; };
   }, []);
@@ -126,6 +130,7 @@ export function LiveApp() {
 
   async function sample(action: 'sample' | 'watch') {
     if (busy || stopped || watching || !canSample || !pathname) return;
+    setFieldReport('');
     setDiagnosticError(undefined);
     setBusy(true);
     setNotice('正在采样当前会话…');
@@ -150,11 +155,30 @@ export function LiveApp() {
     }
   }
 
+  async function runAcceptance() {
+    if (busy || stopped || watching || !pathname) return;
+    setFieldReport('');
+    setDiagnostic('');
+    setSnapshot(undefined);
+    setBusy(true);
+    setNotice('正在采样。可比较时将刷新同一会话一次。');
+    const result = await requestLive({action: 'acceptance', pathname, authorized: true});
+    if (result.acceptance) {
+      setFieldReport(JSON.stringify(result.acceptance, null, 2));
+      setNotice('本次采样无法进行刷新对照。请查看脱敏诊断。');
+    } else if (!result.ok) {
+      setDiagnosticError(result.code ?? 'RELOAD_CHECK_UNAVAILABLE');
+      setNotice(describe(result.code ?? 'RELOAD_CHECK_UNAVAILABLE'));
+    }
+    setBusy(false);
+  }
+
   async function reset(action: 'clear' | 'stop') {
     generation.current++;
     setWatching(false);
     setSnapshot(undefined);
     setDiagnostic('');
+    setFieldReport('');
     setDiagnosticError(undefined);
     setWorkspaceVersion(version => version + 1);
     if (action === 'stop') setStopped(true);
@@ -177,7 +201,7 @@ export function LiveApp() {
         <button disabled={busy || stopped || watching || !canSample}
           onClick={() => void sample('watch')}>跟踪更新</button>
         <button disabled={busy || stopped} onClick={() => void reset('stop')}>停止采集</button>
-        <button disabled={busy || !snapshot} onClick={() => void reset('clear')}>清除数据</button>
+        <button disabled={busy || (!snapshot && !fieldReport)} onClick={() => void reset('clear')}>清除数据</button>
       </div>
       <details>
         <summary>手动调试配置</summary>
@@ -192,14 +216,18 @@ export function LiveApp() {
         <label className="confirm-sample"><input type="checkbox" checked={confirmed} disabled={busy || stopped || watching}
           onChange={event => setConfirmed(event.target.checked)}/>已核对配置并授权读取此会话</label></>}
       </details>
+      <div className="tools">
+        <button disabled={busy || stopped || watching} onClick={() => void runAcceptance()}>运行现场验收</button>
+      </div>
+      <p>仅用于测试会话。取得可比较的基线后会刷新本页一次。</p>
       </>}
       {!!issueCodes.length && <details>
         <summary>采样问题（{issueCodes.length} 类）</summary>
         <ul>{issueCodes.map(code => <li key={code}>{describe(code)}</li>)}</ul>
       </details>}
-      {diagnostic && <details open={snapshot?.status === 'blocked' ? true : undefined}>
+      {(fieldReport || diagnostic) && <details open={fieldReport || snapshot?.status === 'blocked' ? true : undefined}>
         <summary>验收诊断（脱敏）</summary>
-        <textarea aria-label="验收诊断" readOnly rows={7} value={diagnostic} onFocus={event => event.target.select()}
+        <textarea aria-label="验收诊断" readOnly rows={7} value={fieldReport || diagnostic} onFocus={event => event.target.select()}
           style={{width: '100%', marginTop: 6, font: '11px monospace'}}/>
       </details>}
     </section>

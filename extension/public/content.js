@@ -24,11 +24,67 @@
   let panel;
   let stopped = false;
   let observation;
+  let assessment;
+  let panelVersion = 0;
+  const acceptance = globalThis.M2Acceptance;
 
   function clear() {
     observation?.dispose();
     observation = undefined;
     probe?.clear();
+    assessment = undefined;
+  }
+
+  function capture(profile) {
+    if (profile) probe.sample(profile);
+    else probe.sampleDefault();
+    const result = {snapshot: probe.getSnapshot(), scope: probe.getScope()};
+    probe.clear();
+    return result;
+  }
+
+  function reloadCheck(action, before) {
+    return chrome.runtime.sendMessage({channel: 'conversation-map-reload-check', action, before});
+  }
+
+  async function startAcceptance(originalPanel) {
+    const before = await acceptance.summarize(capture().snapshot);
+    if (panel !== originalPanel || location.pathname !== framePath) return {ok: false, code: 'CONTEXT_CHANGED'};
+    if (!before.orderedIds) return {ok: true, acceptance: acceptance.report(before, undefined, 'BASELINE_NOT_COMPARABLE')};
+    let grant;
+    try { grant = await reloadCheck('arm', before); } catch { /* Report the bridge failure below. */ }
+    if (panel !== originalPanel || location.pathname !== framePath) {
+      if (grant?.ok) void reloadCheck('cancel').catch(() => {});
+      return {ok: false, code: 'CONTEXT_CHANGED'};
+    }
+    if (!grant?.ok) return {ok: true, acceptance: acceptance.report(before, undefined, 'RELOAD_GRANT_UNAVAILABLE')};
+    location.reload();
+    return {ok: true};
+  }
+
+  async function finishAcceptance() {
+    if (!probe || !acceptance) return;
+    const reloaded = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+    const path = location.pathname;
+    const version = panelVersion;
+    const isCurrent = () => location.pathname === path && panelVersion === version && !frameMode;
+    const grant = await reloadCheck(reloaded ? 'take' : 'discard');
+    if (!reloaded || !grant?.before || !isCurrent()) return;
+    const deadline = performance.now() + 7_000;
+    let snapshot;
+    while (isCurrent()) {
+      snapshot = capture().snapshot;
+      const code = snapshot.issues[0]?.code;
+      const notReady = code === 'DOCUMENT_HIDDEN' || code === 'NO_MESSAGES' ||
+        (code === 'THREAD_NOT_UNIQUE' && snapshot.acceptance?.threads === 0);
+      if (!notReady || performance.now() >= deadline) break;
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
+    if (!snapshot || !isCurrent()) return;
+    const after = await acceptance.summarize(snapshot);
+    if (!isCurrent()) return;
+    toggle('live', liveButton);
+    assessment = acceptance.report(grant.before, after);
   }
 
   function close() {
@@ -43,6 +99,7 @@
     syntheticButton.setAttribute('aria-expanded', 'false');
   }
   function toggle(mode, button) {
+    panelVersion++;
     const wasOpen = frameMode === mode;
     close();
     if (wasOpen) return;
@@ -83,7 +140,7 @@
     if (message.action === 'context') {
       const pathname = location.pathname;
       const supported = /^\/c\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/?$/i.test(pathname);
-      return reply(supported ? {ok: true, pathname, stopped} : {ok: false, code: 'UNSUPPORTED_ROUTE'});
+      return reply(supported ? {ok: true, pathname, stopped, acceptance: assessment} : {ok: false, code: 'UNSUPPORTED_ROUTE'});
     }
     if (message.action === 'stop' || message.action === 'clear') {
       if (message.action === 'stop') stopped = true;
@@ -92,20 +149,19 @@
     }
     if (stopped) return reply({ok: false, code: 'STOPPED'});
     if (message.action === 'update') return reply({ok: true, ...(observation?.read(message.since) ?? {watching: false})});
-    if (message.action !== 'sample' && message.action !== 'watch') return reply({ok: false, code: 'INVALID_ACTION'});
+    if (!['sample', 'watch', 'acceptance'].includes(message.action)) return reply({ok: false, code: 'INVALID_ACTION'});
     if (message.authorized !== true || message.pathname !== framePath) return reply({ok: false, code: 'PROFILE_REQUIRED'});
     clear();
-    const capture = () => {
-      if (message.profile) probe.sample(message.profile);
-      else probe.sampleDefault();
-      const result = {snapshot: probe.getSnapshot(), scope: probe.getScope()};
-      probe.clear();
-      return result;
-    };
-    const initial = capture();
+    if (message.action === 'acceptance') {
+      if (!acceptance) return reply({ok: false, code: 'RELOAD_CHECK_UNAVAILABLE'});
+      void startAcceptance(panel).then(reply, () => reply({ok: false, code: 'RELOAD_CHECK_UNAVAILABLE'}));
+      return true;
+    }
+    const sample = () => capture(message.profile);
+    const initial = sample();
     if (message.action === 'watch' && initial.scope) {
       const originalPanel = panel;
-      observation = globalThis.M2Observe.start(initial, capture, () =>
+      observation = globalThis.M2Observe.start(initial, sample, () =>
         panel === originalPanel && frame?.isConnected && location.pathname === framePath);
       return reply({ok: true, ...observation.read(0)});
     }
@@ -114,4 +170,5 @@
 
   shadow.append(style, launcher);
   document.documentElement.append(host);
+  void finishAcceptance().catch(() => {});
 })();

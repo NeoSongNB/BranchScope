@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "BranchScope · 对话地图",
-  "version": "0.2.1",
+  "version": "0.2.2",
+  "version_name": "0.2.2 Preview",
   "description": "只读 ChatGPT 会话地图，保留合成测试模式。",
   "action": {
     "default_title": "打开合成数据测试地图"
@@ -18,6 +19,7 @@
         "m2-parser.js",
         "m2-probe.js",
         "m2-observe.js",
+        "acceptance.js",
         "content.js"
       ],
       "run_at": "document_idle",

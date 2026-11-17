@@ -18,7 +18,7 @@ const fixture = `<!doctype html><meta charset="utf-8"><title>Local extension fix
   <div style="display:none"><article data-role="assistant" data-dil-message-id="OLD-ONLY"><p class="copy">旧线程</p></article></div></main>`;
 
 async function fixtureBrowser(html = fixture) {
-  const dist = resolve('dist');
+  const dist = resolve(process.env.BRANCHSCOPE_EXTENSION_DIR ?? 'dist');
   const context = await chromium.launchPersistentContext('', {
     channel: 'chromium', headless: true, chromiumSandbox: true, viewport: {width: 1440, height: 1000},
     args: ['--disable-extensions-except=' + dist, '--load-extension=' + dist],
@@ -251,6 +251,63 @@ test('unsupported routes, ambiguous threads and bodies, and message limits show 
     await frame.getByRole('button', {name: '采样当前会话'}).click();
     await expect(frame.getByText(/消息数量超过单次上限/)).toBeVisible();
     await expect(frame.locator('.react-flow__node')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('the field check reloads the authorized conversation once and reopens a redacted result', async () => {
+  const id = '11111111-1111-1111-1111-111111111111';
+  const context = await fixtureBrowser(`<!doctype html><meta charset="utf-8">
+    <main data-thread-find-target="conversation">
+      <article data-conversation-role="user" data-chatgpt-search-message-ids="${id}">
+        <div data-user-message-bubble="true">fixture body for reload check</div>
+      </article>
+    </main>`);
+  try {
+    const page = context.pages()[0];
+    await page.goto(site + route);
+    let reloads = 0;
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) reloads++; });
+    const frame = await openLive(context, page);
+    const reopened = page.waitForEvent('framenavigated', {
+      predicate: item => item !== frame && item.url().includes('/index.html?mode=live&panel='),
+    });
+    await frame.getByRole('button', {name: '运行现场验收'}).click();
+    const next = await reopened;
+    const diagnostic = next.getByLabel('验收诊断', {exact: true});
+    await expect(diagnostic).toHaveValue(/same-ids-in-same-order/);
+    const value = await diagnostic.inputValue();
+    expect(reloads).toBe(1);
+    expect(page.url()).toBe(site + route);
+    expect(JSON.parse(value)).toMatchObject({
+      t10: 'sampled-compare-visible-messages', t11: 'same-ids-in-same-order',
+      t13: 'dedicated-boundary-cases-not-exercised', before: {identified: 1}, after: {identified: 1},
+    });
+    for (const privateValue of [route, id, 'fixture body for reload check', 'orderedIds', 'fingerprint']) {
+      expect(value).not.toContain(privateValue);
+    }
+    await expect(next.locator('.react-flow__node')).toHaveCount(0);
+    await next.getByRole('button', {name: '清除数据'}).click();
+    await expect(diagnostic).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('a blocked field baseline reports the reason without reloading the page', async () => {
+  const context = await fixtureBrowser();
+  try {
+    const page = context.pages()[0];
+    await page.goto(site + route);
+    const frame = await openLive(context, page);
+    await frame.getByRole('button', {name: '运行现场验收'}).click();
+    const diagnostic = frame.getByLabel('验收诊断', {exact: true});
+    await expect(diagnostic).toHaveValue(/BASELINE_NOT_COMPARABLE/);
+    expect(JSON.parse(await diagnostic.inputValue())).toMatchObject({
+      t11: 'inconclusive', before: {status: 'blocked', issues: ['THREAD_NOT_UNIQUE']},
+    });
+    expect(await page.evaluate(() => (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming).type)).toBe('navigate');
   } finally {
     await context.close();
   }

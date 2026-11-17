@@ -9,7 +9,8 @@ it('MV3 grants no API permissions and injects only on chatgpt.com',()=>{
   expect(m.content_security_policy.extension_pages).toContain("connect-src 'none'");
 });
 it('product source has no network/credential/write API or HTML injection',()=>{
-  const files=[...readdirSync('src').map(x=>'src/'+x),'public/content.js','public/background.js'];
+  const files=[...readdirSync('src').map(x=>'src/'+x),...readdirSync('public').filter(x=>x.endsWith('.js')).map(x=>'public/'+x),
+    '../research/m2-prototype/parser.js','../research/m2-prototype/probe.js','../research/m2-prototype/observe.js'];
   const code=files.map(f=>readFileSync(f,'utf8')).join('\n');
   expect(code).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|WebSocket|document\.cookie|\/backend-api\/|\/api\/auth\/|execCommand|dangerouslySetInnerHTML|\.innerHTML\s*=/);
 });
