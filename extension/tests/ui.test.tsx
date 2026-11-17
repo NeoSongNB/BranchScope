@@ -1,0 +1,12 @@
+import React from 'react';
+import {render,screen,fireEvent,waitFor,cleanup} from '@testing-library/react';
+import {afterEach,it,expect,vi} from 'vitest';
+import {App,SafeContent} from '../src/App';
+import type {LayoutStore} from '../src/storage';
+vi.mock('@xyflow/react',()=>({ReactFlowProvider:({children}:any)=>children,ReactFlow:({nodes,onNodeClick}:any)=><div>{nodes.map((n:any)=><button key={n.id} onClick={()=>onNodeClick(null,n)}>{n.id}</button>)}</div>,Background:()=>null,Controls:()=>null,Handle:()=>null,Position:{Top:'top'},applyNodeChanges:(_:any,n:any)=>n}));
+afterEach(cleanup);
+const store=():LayoutStore=>({load:vi.fn().mockResolvedValue(null),save:vi.fn().mockResolvedValue(undefined),last:vi.fn().mockResolvedValue('linear'),remember:vi.fn().mockResolvedValue(undefined)});
+it('U06 renders hostile Markdown as inert text without links, images or scripts',()=>{const text='<img src="https://example.invalid/a" onerror="alert(1)"><script>alert(1)</script>[click](javascript:alert(1))';const {container}=render(<SafeContent text={text}/>);expect(container.textContent).toBe(text);expect(container.querySelector('script,img,a,iframe')).toBeNull();});
+it('search selects a node and persists selection; no write controls',async()=>{const s=store();render(<App store={s}/>);await screen.findByRole('button',{name:'u1'});fireEvent.change(screen.getByLabelText('搜索已加载的样本文本'),{target:{value:'时间'}});expect(screen.getByText('2 条匹配消息')).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'u2'}));await waitFor(()=>expect(s.save).toHaveBeenCalled());expect(screen.getByText('用户消息')).toBeTruthy();expect(screen.queryByRole('button',{name:/发送|编辑|重新生成/})).toBeNull();});
+it('U05 failed save is visible and retry succeeds',async()=>{const s=store();vi.mocked(s.save).mockRejectedValueOnce(new Error('quota'));render(<App store={s}/>);fireEvent.click(await screen.findByRole('button',{name:'u1'}));await screen.findByText('保存失败：本次布局尚未保存，请重试');expect(screen.queryByText('布局已保存')).toBeNull();fireEvent.click(screen.getByText('重试保存'));await screen.findByText('布局已保存');});
+it('U05 corrupted layout cannot be silently overwritten',async()=>{const s=store();vi.mocked(s.load).mockRejectedValue(new Error('schema'));render(<App store={s}/>);await screen.findByText('读取失败：未覆盖原布局，请重试');expect(s.save).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:'u1'})).toBeNull();});

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "BranchScope · 对话地图",
+  "version": "0.2.1",
+  "description": "只读 ChatGPT 会话地图，保留合成测试模式。",
+  "action": {
+    "default_title": "打开合成数据测试地图"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "m2-parser.js",
+        "m2-probe.js",
+        "m2-observe.js",
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "index.html",
+        "assets/*"
+      ],
+      "matches": [
+        "https://chatgpt.com/*"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'none'"
+  }
+}
