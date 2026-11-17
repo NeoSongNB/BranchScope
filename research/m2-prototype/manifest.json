@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "M2 Single DOM Probe",
+  "version": "0.2.0",
+  "description": "Manual, evidence-gated single DOM sample; no automatic message collection.",
+  "content_scripts": [{
+    "matches": ["https://chatgpt.com/*"],
+    "js": ["parser.js", "probe.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }]
+}

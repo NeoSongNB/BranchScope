@@ -1,0 +1,28 @@
+{
+  "description": "Synthetic structured observations only. Not captured DOM, not browser compatibility evidence. containerKey asserts canonical container identity supplied by a future collector.",
+  "metadata": {"conversationKey": "chatgpt:conversation:synthetic-A", "loadGeneration": 0, "revision": 1, "observedAt": "2026-10-29T00:00:00Z"},
+  "cases": {
+    "repeatedTokens": [{"containerKey":"c1","attributes":{"data-chatgpt-search-message-ids":" X  X\nX "},"role":"user","roleEvidence":"synthetic-user-label","text":"same"}],
+    "sameTextDifferentIds": [
+      {"containerKey":"c1","attributes":{"data-chatgpt-selection-message-id":"X"},"text":"same"},
+      {"containerKey":"c2","attributes":{"data-chatgpt-selection-message-id":"Y"},"text":"same"}
+    ],
+    "consistentAttributes": [{"containerKey":"c1","attributes":{"data-chatgpt-selection-message-id":"X","data-dil-source-message-id":"X","data-dil-message-id":"X"},"role":"assistant","roleEvidence":"synthetic-assistant-label","text":"answer"}],
+    "multipleIds": [{"containerKey":"c1","attributes":{"data-chatgpt-search-message-ids":"X Y X"},"text":"not duplicated"}],
+    "missingId": [{"containerKey":"c1","attributes":{"data-chatgpt-search-message-ids":" \n "},"text":"not a key"}],
+    "nestedReferences": [
+      {"containerKey":"c1","attributes":{"data-chatgpt-search-message-ids":"X X"},"text":"same"},
+      {"containerKey":"c1","attributes":{"data-dil-message-id":"X"},"text":"same"}
+    ],
+    "independentConflict": [
+      {"containerKey":"c1","attributes":{"data-dil-message-id":"X"},"text":"same"},
+      {"containerKey":"c2","attributes":{"data-dil-message-id":"X"},"text":"same"},
+      {"containerKey":"c3","attributes":{"data-dil-message-id":"Y"},"text":"unaffected"}
+    ],
+    "textBefore": [{"containerKey":"c1","attributes":{"data-dil-message-id":"X"},"text":"a"}],
+    "textAfter": [{"containerKey":"c1","attributes":{"data-dil-message-id":"X"},"text":"ab"}],
+    "idAfter": [{"containerKey":"c1","attributes":{"data-dil-message-id":"Y"},"text":"new answer"}],
+    "unknownContent": [{"containerKey":"c1","attributes":{"data-dil-message-id":"X"}}],
+    "unsupportedContent": [{"containerKey":"c1","attributes":{"data-dil-message-id":"X"},"contentStatus":"unsupported"}]
+  }
+}
